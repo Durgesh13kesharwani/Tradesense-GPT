@@ -5,4 +5,5 @@ numpy
 matplotlib
 prophet 
 plotly 
-sklearn 
+sckit_learn
+
