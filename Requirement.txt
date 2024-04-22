@@ -2,9 +2,7 @@ streamlit
 yfinance 
 datetime 
 numpy 
-matplotlib.pyplot 
+matplotlib
 prophet 
-plotly.graph_objs 
-sklearn.model_selection  
-sklearn.ensemble  
+plotly 
 sklearn 
