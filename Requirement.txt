@@ -1,0 +1,10 @@
+streamlit 
+yfinance 
+datetime 
+numpy 
+matplotlib.pyplot 
+prophet 
+plotly.graph_objs 
+sklearn.model_selection  
+sklearn.ensemble  
+sklearn 
