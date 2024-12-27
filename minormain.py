@@ -19,12 +19,20 @@ def load_data(ticker):
 
 # Function to predict stock prices
 def predict_stock(data, n_years):
+    # Prepare the dataframe for Prophet
     df_train = data.reset_index()[['Date', 'Close']]
     df_train = df_train.rename(columns={"Date": "ds", "Close": "y"})
-
+    
+    # Ensure 'y' contains numeric values
+    df_train['y'] = pd.to_numeric(df_train['y'], errors='coerce')  # Convert non-numeric to NaN
+    df_train = df_train.dropna(subset=['y'])  # Drop rows with NaN values
+    
+    # Fit the Prophet model
     m = Prophet()
     m.fit(df_train)
-    future = m.make_future_dataframe(periods=n_years*365)
+    
+    # Make future dataframe and predictions
+    future = m.make_future_dataframe(periods=n_years * 365)
     forecast = m.predict(future)
     return forecast
 
