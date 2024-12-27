@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 from datetime import date
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from prophet import Prophet
 # from patch_prophet_plot import patch_plot_plotly
