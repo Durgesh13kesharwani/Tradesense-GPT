@@ -51,6 +51,9 @@ pip install -r requirements.txt
 # Run the Streamlit app
 streamlit run app.py
 ```
+---
+
+## Process to use
 
 1. Select a Stock:
    - Choose from BTC-USD, GOOG, AAPL, MSFT, or GME.
@@ -70,6 +73,9 @@ streamlit run app.py
 6. Model Accuracy:
    - See regression-based accuracy on historical data.
 
+---
+
+## Details of the software
 
 - Forecast Plots:
   Line chart of predicted vs actual closing prices
@@ -84,8 +90,9 @@ streamlit run app.py
   UPI, Credit Card, Debit Card, PayPal, Bank Transfer
 
   
+---
 
-The app uses:
+## The app uses:
 
 ✅ Prophet for time-series prediction
 
@@ -98,10 +105,16 @@ The app uses:
    • RSI & moving averages from technical analysis
    • Sentiment from news and social media signals
    
+---
 
-🤝 Contributing
+## 🤝 Contributing
+
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
+---
 
-📄 License
+## 📄 License
+
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
