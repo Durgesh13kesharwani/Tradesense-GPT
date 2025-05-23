@@ -45,6 +45,12 @@ TradeSense-GPT is a powerful, intelligent, and interactive web application that 
 git clone https://github.com/Durgesh13kesharwani/TradeSense-GPT.git
 cd TradeSense-GPT
 
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual Environment
+venv\Scripts\activate
+
 # Install dependencies
 pip install -r requirements.txt
 
