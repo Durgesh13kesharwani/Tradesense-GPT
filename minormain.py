@@ -5,36 +5,52 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from prophet import Prophet
-# from patch_prophet_plot import patch_plot_plotly
 import plotly.graph_objs as go
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn import metrics
 
-# Function to load stock data
+# Function to load stock data using yfinance
 def load_data(ticker):
     START = "2015-01-01"
     TODAY = date.today().strftime("%Y-%m-%d")
-    data = yf.download(ticker, START, TODAY)
-    return data
+    try:
+        data = yf.download(ticker, start=START, end=TODAY, auto_adjust=False)
+        if data.empty:
+            raise ValueError("No data found.")
+        data.reset_index(inplace=True)
+
+        # Flatten MultiIndex columns if needed
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = [' '.join(col).strip() if col[1] else col[0] for col in data.columns]
+        else:
+            data.columns = [col.strip() for col in data.columns]  # Clean any whitespace
+
+        return data
+    except Exception as e:
+        st.error(f"Failed to retrieve data for {ticker}. Error: {e}")
+        return pd.DataFrame()
 
 # Function to predict stock prices
 def predict_stock(data, n_years):
-    # Prepare the dataframe for Prophet
-    df_train = data.reset_index()[['Date', 'Close']]
-    df_train = df_train.rename(columns={"Date": "ds", "Close": "y"})
-    
-    # Ensure 'y' contains numeric values
-    df_train['y'] = pd.to_numeric(df_train['y'], errors='coerce')  # Convert non-numeric to NaN
-    df_train = df_train.dropna(subset=['y'])  # Drop rows with NaN values
-    
-    # Fit the Prophet model
-    m = Prophet()
-    m.fit(df_train)
-    
-    # Make future dataframe and predictions
-    future = m.make_future_dataframe(periods=n_years * 365)
-    forecast = m.predict(future)
+    # Try to find the correct 'Adj Close' column dynamically
+    adj_close_col = next((col for col in data.columns if 'Adj Close' in col), None)
+    if not adj_close_col or 'Date' not in data.columns:
+        raise ValueError("Data must contain 'Date' and 'Adj Close' columns.")
+
+    df_train = data[['Date', adj_close_col]].copy()
+    df_train.columns = ['ds', 'y']
+    df_train['ds'] = pd.to_datetime(df_train['ds'], errors='coerce')
+    df_train['y'] = pd.to_numeric(df_train['y'], errors='coerce')
+    df_train.dropna(subset=['ds', 'y'], inplace=True)
+
+    if df_train.empty or len(df_train) < 2:
+        raise ValueError("Not enough valid rows for forecasting.")
+
+    model = Prophet()
+    model.fit(df_train)
+    future = model.make_future_dataframe(periods=n_years * 365)
+    forecast = model.predict(future)
     return forecast
 
 # Function to plot stock forecast
@@ -47,9 +63,9 @@ def plot_stock_forecast(forecast):
     return fig
 
 # Streamlit app
-st.title('[TradeSense GPT]- Intelligent Stock Investing Made Simple')
+st.title('[TradeSense GPT] - Intelligent Stock Investing Made Simple')
 
-stocks = ('GOOG', 'AAPL', 'MSFT', 'GME')
+stocks = ('BTC-USD','GOOG', 'AAPL', 'MSFT', 'GME')
 selected_stock = st.selectbox('Select dataset for prediction', stocks)
 
 n_years = st.slider('Years of prediction:', 1, 4)
@@ -60,37 +76,34 @@ data_load_state = st.text('Loading data...')
 data = load_data(selected_stock)
 data_load_state.text('Loading data... done!')
 
+if data.empty:
+    st.error("Stock data could not be loaded.")
+    st.stop()
+
 st.subheader('Raw data')
 st.write(data.tail())
 
 # Plot raw data
 st.subheader('Raw data plot')
-st.line_chart(data['Close'])
+adj_close_col = next((col for col in data.columns if 'Adj Close' in col), None)
+if adj_close_col:
+    st.line_chart(data[adj_close_col])
+else:
+    st.warning("'Adj Close' column not found.")
 
-# Predict and plot forecast
+# Forecast section
 st.subheader('Forecast data')
 forecast = predict_stock(data, n_years)
 st.write(forecast.tail())
-
 st.subheader(f'Forecast plot for {n_years} years')
 fig = plot_stock_forecast(forecast)
 st.plotly_chart(fig)
 
+# Sidebar Inputs
+st.sidebar.title('Investment Inputs')
+amount_invested = st.sidebar.number_input("Amount Invested (Rs)", value=10000.0, step=100.0)
+time_input = st.sidebar.text_input("Time Period (year/month/day)", value="1 year")
 
-
-# Function to determine market trend based on analysis parameters
-def determine_market_trend(market_conditions, historical_performance, fundamentals, technical_analysis, sentiment_analysis):
-    # Determine market trend based on analysis parameters
-    if market_conditions['bullish'] and market_conditions['volatility'] == 'low' \
-        and historical_performance['average_returns'] > 0 and historical_performance['std_dev'] < 0.1 \
-        and fundamentals['earnings_growth'] == 'high' and fundamentals['debt_levels'] == 'low' \
-        and technical_analysis['moving_average'] == 'above' and technical_analysis['RSI'] == 'overbought' \
-        and sentiment_analysis['positive_news'] and sentiment_analysis['social_media_sentiment'] == 'bullish':
-        return 'uptrend'
-    else:
-        return 'downtrend'
-
-# Function to parse time period input and convert to months
 def parse_time_period(time_input):
     time_input = time_input.lower()
     if 'year' in time_input:
@@ -98,180 +111,117 @@ def parse_time_period(time_input):
     elif 'month' in time_input:
         return int(time_input.split()[0])
     elif 'day' in time_input:
-        return int(time_input.split()[0]) / 30  # Assuming 30 days in a month
+        return int(time_input.split()[0]) / 30
     else:
         return 0
 
-# Take user input for investment amount and time period
-st.sidebar.title('Investment Inputs')
-amount_invested = st.sidebar.number_input("Amount Invested (Rs)", value=10000.0, step=100.0)
-time_input = st.sidebar.text_input("Time Period (year/month/day)", value="1 year")
 time_period = parse_time_period(time_input)
 
-# Function to calculate probability of profit and loss based on parameters
-def calculate_probabilities(market_conditions, historical_performance, fundamentals, technical_analysis, sentiment_analysis, model_accuracy, amount_invested, time_period, investment_type):
-    # Adjust investment type based on time period
-    if time_period >= 1:
-        investment_type = 'long term'
+# Market analysis & return estimation
+def determine_market_trend(mc, hp, f, ta, sa):
+    if mc['bullish'] and mc['volatility'] == 'low' \
+        and hp['average_returns'] > 0 and hp['std_dev'] < 0.1 \
+        and f['earnings_growth'] == 'high' and f['debt_levels'] == 'low' \
+        and ta['moving_average'] == 'above' and ta['RSI'] == 'overbought' \
+        and sa['positive_news'] and sa['social_media_sentiment'] == 'bullish':
+        return 'uptrend'
+    return 'downtrend'
+
+def calculate_probabilities(mc, hp, f, ta, sa, acc, amt, tp, inv_type):
+    inv_type = 'long term' if tp >= 1 else 'short term'
+    trend = determine_market_trend(mc, hp, f, ta, sa)
+    p_profit = 0.5
+
+    if trend == 'uptrend':
+        if acc < 0.8: p_profit -= 0.1
+        if amt > 10000: p_profit += 0.05
+        if inv_type == 'long term': p_profit += 0.05
+        else: p_profit -= 0.05
     else:
-        investment_type = 'short term'
+        if acc < 0.8: p_profit += 0.1
+        if amt > 10000: p_profit -= 0.05
+        if inv_type == 'long term': p_profit -= 0.05
+        else: p_profit += 0.05
 
-    # Determine market trend based on analysis parameters
-    market_trend = determine_market_trend(market_conditions, historical_performance, fundamentals, technical_analysis, sentiment_analysis)
+    return p_profit * 0.8, (1 - p_profit) * 0.8, inv_type
 
-    # Placeholder values for demonstration - Replace with actual calculations
-    base_probability_of_profit = 0.5
-    base_probability_of_loss = 0.5
+def calculate_expected_return(p_profit, p_loss, gpt_charge, other_charges, taxes, trend):
+    return max((p_profit if trend == 'uptrend' else p_loss) - gpt_charge - other_charges - taxes, 0)
 
-    # Adjust probabilities based on additional parameters and market trend
-    if market_trend == 'uptrend':
-        if model_accuracy < 0.8:
-            base_probability_of_profit -= 0.1
-            base_probability_of_loss += 0.1
-        
-        if amount_invested > 10000:
-            base_probability_of_profit += 0.05
-            base_probability_of_loss -= 0.05
-        
-        if investment_type == 'long term':
-            base_probability_of_profit += 0.05
-            base_probability_of_loss -= 0.05
-        elif investment_type == 'short term':
-            base_probability_of_profit -= 0.05
-            base_probability_of_loss += 0.05
-
-    elif market_trend == 'downtrend':
-        if model_accuracy < 0.8:
-            base_probability_of_profit += 0.1
-            base_probability_of_loss -= 0.1
-        
-        if amount_invested > 10000:
-            base_probability_of_profit -= 0.05
-            base_probability_of_loss += 0.05
-        
-        if investment_type == 'long term':
-            base_probability_of_profit -= 0.05
-            base_probability_of_loss += 0.05
-        elif investment_type == 'short term':
-            base_probability_of_profit += 0.05
-            base_probability_of_loss -= 0.05
-
-    # Placeholder calculations for simplicity
-    probability_of_profit = base_probability_of_profit * 0.8  # Adjusted based on model confidence
-    probability_of_loss = base_probability_of_loss * 0.8  # Adjusted based on model confidence
-
-    return probability_of_profit, probability_of_loss, investment_type
-
-# Function to calculate expected return percentage
-def calculate_expected_return(probability_of_profit, probability_of_loss, gpt_model_charge, other_charges, taxes, market_trend):
-    # Calculate expected return percentage based on market trend
-    if market_trend == 'uptrend':
-        expected_return_percentage = probability_of_profit - gpt_model_charge - other_charges - taxes
-    elif market_trend == 'downtrend':
-        expected_return_percentage = probability_of_loss - gpt_model_charge - other_charges - taxes
-    else:
-        expected_return_percentage = 0  # No clear trend, no expected return
-
-    return max(expected_return_percentage, 0)  # Ensure positive return
-
-# Example parameters
+# Simulated parameters
 market_conditions = {'bullish': True, 'volatility': 'low'}
 historical_performance = {'average_returns': 0.08, 'std_dev': 0.05}
 fundamentals = {'earnings_growth': 'high', 'debt_levels': 'low'}
 technical_analysis = {'moving_average': 'above', 'RSI': 'overbought'}
 sentiment_analysis = {'positive_news': True, 'social_media_sentiment': 'bullish'}
+
 accuracy = 99.99679049316039
-model_accuracy = accuracy  # Example model accuracy
-
-
-# Adjust investment type based on time period
-if time_period >= 1:
-    investment_type = 'long term'
-else:
-    investment_type = 'short term'
-
-# Determine market trend based on analysis parameters
-market_trend = determine_market_trend(market_conditions, historical_performance, fundamentals, technical_analysis, sentiment_analysis)
-
-# Example charges and taxes
+model_accuracy = accuracy / 100
 gpt_model_charge = 0.05
 other_charges = 0.1
 taxes = 0.05
 
-# Calculate probabilities
-probability_of_profit, probability_of_loss, investment_type = calculate_probabilities(market_conditions, historical_performance, fundamentals, technical_analysis, sentiment_analysis, model_accuracy, amount_invested, time_period, None)
+prob_profit, prob_loss, inv_type = calculate_probabilities(
+    market_conditions, historical_performance, fundamentals,
+    technical_analysis, sentiment_analysis,
+    model_accuracy, amount_invested, time_period, None
+)
 
-# Calculate expected return percentage
-expected_return_percentage = calculate_expected_return(probability_of_profit, probability_of_loss, gpt_model_charge, other_charges, taxes, market_trend)
+exp_return_percent = calculate_expected_return(prob_profit, prob_loss, gpt_model_charge, other_charges, taxes,
+                                               determine_market_trend(market_conditions, historical_performance,
+                                                                      fundamentals, technical_analysis,
+                                                                      sentiment_analysis))
+exp_return_amt = amount_invested * (1 + exp_return_percent) ** (time_period / 12)
 
+# Sidebar Outputs
+st.sidebar.write("Probability of Profit:", round(prob_profit, 2))
+st.sidebar.write("Probability of Loss:", round(prob_loss, 2))
+st.sidebar.write("Investment Type:", inv_type)
+st.sidebar.write(f"Expected Return Percentage: {exp_return_percent * 100:.2f}%")
+st.sidebar.write(f"Expected Return Amount: Rs {exp_return_amt:.2f}")
 
-# Print results
-st.sidebar.write("Probability of Profit:", probability_of_profit)
-st.sidebar.write("Probability of Loss:", probability_of_loss)
-st.sidebar.write("Investment Type:", investment_type)
-
-# Calculate the expected return amount
-expected_return_amount = amount_invested * (1 + expected_return_percentage) ** (time_period / 12)
-
-# Display expected return percentage and amount
-st.sidebar.write(f"Expected Return Percentage: {expected_return_percentage * 100:.2f}%")
-st.sidebar.write(f"Expected Return Amount: Rs {expected_return_amount:.2f}")
-
-# Payment option
 st.sidebar.subheader("Payment Options")
-payment_options = ["UPI","Credit Card", "Debit Card", "PayPal", "Bank Transfer"]
-payment_method = st.sidebar.selectbox("Select Payment Method", payment_options)
-
+payment_method = st.sidebar.selectbox("Select Payment Method", ["UPI", "Credit Card", "Debit Card", "PayPal", "Bank Transfer"])
 st.sidebar.write("You have selected:", payment_method)
 
-# Stock prediction accuracy
+# Stock Prediction Accuracy
 st.subheader('Stock Prediction Accuracy')
 
-# Load the dataset
-data = yf.download(selected_stock, start="2015-01-01", end=date.today().strftime("%Y-%m-%d"))
+feature_cols = [col for col in data.columns if any(x in col for x in ['Open', 'High', 'Low', 'Volume'])]
 
-# Extract features and target
-X = data.drop(columns=["Close"])
-Y = data["Close"]
+if not adj_close_col or len(feature_cols) < 4 or 'Date' not in data.columns:
+    st.warning("Missing required columns for prediction.")
+else:
+    X = data[feature_cols]
+    Y = data[adj_close_col]
 
-# Split the dataset
-X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=2)
+    if len(X) < 10:
+        st.warning("Not enough data to train prediction model.")
+    else:
+        X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=2)
 
-# Train the model
-regressor = RandomForestRegressor(n_estimators=100)
-regressor.fit(X_train, Y_train)
+        regressor = RandomForestRegressor(n_estimators=100, random_state=42)
+        regressor.fit(X_train, Y_train.values.ravel())
 
-# Predict on test data
-test_data_prediction = regressor.predict(X_test)
+        test_prediction = regressor.predict(X_test)
 
-# R squared error
-error_score = metrics.r2_score(Y_test, test_data_prediction)
+        r2 = metrics.r2_score(Y_test, test_prediction)
+        mape = metrics.mean_absolute_percentage_error(Y_test, test_prediction)
+        accuracy = 100 - mape * 100
 
-# Choose time period
-time_periods = {"1 year": "1y", "1 month": "1mo", "3 months": "3mo","1 day": "1d" , "5 years": "5y"}
-selected_period = st.selectbox("Select Time Period", list(time_periods.keys()))
+        # Plot actual data as candlesticks
+        fig = go.Figure()
+        fig.add_trace(go.Candlestick(x=data['Date'],
+                                     open=data[feature_cols[0]],
+                                     high=data[feature_cols[1]],
+                                     low=data[feature_cols[2]],
+                                     close=data[adj_close_col], name='Actual'))
 
-# Plot actual data as candlesticks
-fig.add_trace(go.Candlestick(x=data.index,
-                open=data['Open'],
-                high=data['High'],
-                low=data['Low'],
-                close=data['Close'], name='Actual'))
+        fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat'], mode='lines', line=dict(color='green'), name="Predicted"))
+        fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat_upper'], mode='lines', line=dict(color='green'), name="Upper Bound"))
+        fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat_lower'], mode='lines', line=dict(color='red'), name="Lower Bound"))
 
-# Plot predicted data
-fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat'], mode='lines', line=dict(color='green'), name="Predicted"))
-fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat_upper'], mode='lines', line=dict(color='green'), name="Upper Bound"))
-fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat_lower'], mode='lines', line=dict(color='red'), name="Lower Bound"))
+        fig.layout.update(title_text='Stock Forecast', xaxis_rangeslider_visible=True)
+        st.plotly_chart(fig)
 
-fig.layout.update(title_text='Stock Forecast', xaxis_rangeslider_visible=True)
-st.plotly_chart(fig)
-
-
-# Calculate mean absolute percentage error (MAPE)
-mape = metrics.mean_absolute_percentage_error(Y_test, test_data_prediction)
-
-# Calculate accuracy
-accuracy = 100 - mape
-
-# Print accuracy
-st.write("Accuracy:", accuracy, "%")
+        st.write(f"Prediction Accuracy: {accuracy:.2f}%")
