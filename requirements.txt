@@ -1,0 +1,25 @@
+# Core Web App
+streamlit==1.35.0
+
+# Data Handling
+pandas==2.2.2
+numpy==1.26.4
+
+# Plotting
+matplotlib==3.9.0
+plotly==5.22.0
+
+# Financial Data
+yfinance==0.2.61
+requests_html==0.10.0
+
+# Optional: Excel Support
+openpyxl==3.1.2
+
+# Machine Learning and Forecasting
+scikit-learn==1.5.0
+
+# Required for pystan and prophet
+Cython==0.29.36
+#pystan==2.19.1.1
+prophet==1.1.5

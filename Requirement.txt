@@ -1,9 +1,0 @@
-streamlit 
-yfinance 
-datetime 
-numpy 
-matplotlib
-prophet 
-plotly 
-scikit-learn
-
